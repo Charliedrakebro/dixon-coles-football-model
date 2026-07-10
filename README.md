@@ -95,12 +95,12 @@ model log loss : 0.9342
 
 Calibration tracks the diagonal closely across all ten bins, and the naive
 value-bet ROI sits just below zero. Fitting on real Premier League data with
-`scripts/fit_and_report.py` produces the same report against genuine closing
+`fit_and_report.py` produces the same report against genuine closing
 odds; drop your numbers in here once you have run it.
 
 ## Validation
 
-`tests/test_recovery.py` simulates seasons from known ratings and checks the
+`test_recovery.py` simulates seasons from known ratings and checks the
 fitter recovers them. On the current settings the recovered attack and defence
 ratings correlate with the truth at roughly 0.98 and 0.97, and home advantage
 and `rho` land next to their true values. If that test fails, nothing
@@ -112,32 +112,29 @@ downstream should be trusted.
 pip install -r requirements.txt
 
 # offline, no network: simulate, fit, backtest, plot
-python scripts/demo_offline.py
+python demo_offline.py
 
 # real data: Premier League, last three seasons
-python scripts/fit_and_report.py
+python fit_and_report.py
 
 # another league (La Liga), choosing seasons
-python scripts/fit_and_report.py SP1 2223 2324 2425
+python fit_and_report.py SP1 2223 2324 2425
 
 # parameter-recovery test
-python tests/test_recovery.py
+python test_recovery.py
 ```
 
 ## Layout
 
 ```
-dcmodel/
-  model.py      Dixon-Coles model: fit, scoreline matrix, 1X2 and over/under
-  odds.py       de-vigging: proportional and Shin implied probabilities
-  data.py       football-data.co.uk loader and schema standardisation
-  simulate.py   synthetic seasons for tests and offline demos
-  evaluate.py   RPS, log loss, walk-forward backtest, calibration, value bets
-scripts/
-  demo_offline.py   full pipeline on simulated data
-  fit_and_report.py full pipeline on real data
-tests/
-  test_recovery.py  parameter-recovery check
+model.py            Dixon-Coles model: fit, scoreline matrix, 1X2 and over/under
+odds.py             de-vigging: proportional and Shin implied probabilities
+data.py             football-data.co.uk loader and schema standardisation
+simulate.py         synthetic seasons for tests and offline demos
+evaluate.py         RPS, log loss, walk-forward backtest, calibration, value bets
+demo_offline.py     full pipeline on simulated data (no network)
+fit_and_report.py   full pipeline on real data
+test_recovery.py    parameter-recovery check
 ```
 
 ## Limitations and where this goes next

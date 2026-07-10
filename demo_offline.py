@@ -4,7 +4,7 @@ End-to-end demo on simulated data (no network needed).
 Runs the whole pipeline: simulate a few seasons, fit the model, run a
 walk-forward backtest against the (margined) market, print the score
 comparison and calibration, run a naive value-bet backtest, and save a
-reliability plot to figures/calibration_demo.png.
+reliability plot to calibration_demo.png.
 
 Use this to sanity-check the code anywhere. For the real thing, run
 scripts/fit_and_report.py, which pulls actual Premier League data and odds.
@@ -18,10 +18,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from dcmodel.simulate import make_team_params, simulate_season
-from dcmodel.evaluate import (
+from simulate import make_team_params, simulate_season
+from evaluate import (
     walk_forward_backtest, summarise_backtest, reliability_table, value_bet_backtest,
 )
 
@@ -58,7 +58,7 @@ def main():
     print(f"quarter-Kelly bank : {vb['kelly_final_bankroll']:.3f} (from 1.000)")
 
     # reliability plot
-    os.makedirs(os.path.join(os.path.dirname(__file__), "..", "figures"), exist_ok=True)
+
     fig, ax = plt.subplots(figsize=(5, 5))
     ax.plot([0, 1], [0, 1], "--", color="grey", label="perfect calibration")
     ax.scatter(rel["mean_predicted"], rel["observed_rate"], s=rel["n"] / rel["n"].max() * 200,
@@ -69,7 +69,7 @@ def main():
     ax.legend()
     ax.set_xlim(0, 1); ax.set_ylim(0, 1)
     fig.tight_layout()
-    out = os.path.join(os.path.dirname(__file__), "..", "figures", "calibration_demo.png")
+    out = "calibration_demo.png"
     fig.savefig(out, dpi=120)
     print(f"\nSaved reliability plot to {os.path.relpath(out)}")
 

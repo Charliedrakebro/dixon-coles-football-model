@@ -22,11 +22,11 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from dcmodel.data import load_seasons
-from dcmodel.model import DixonColesModel, time_decay_weights
-from dcmodel.evaluate import (
+from data import load_seasons
+from model import DixonColesModel, time_decay_weights
+from evaluate import (
     walk_forward_backtest, summarise_backtest, reliability_table, value_bet_backtest,
 )
 
@@ -63,7 +63,7 @@ def main(argv):
         print(f"quarter-Kelly  : {vb['kelly_final_bankroll']:.3f} (from 1.000)")
 
     rel = reliability_table(bt, bins=10)
-    os.makedirs(os.path.join(os.path.dirname(__file__), "..", "figures"), exist_ok=True)
+
     fig, ax = plt.subplots(figsize=(5, 5))
     ax.plot([0, 1], [0, 1], "--", color="grey", label="perfect calibration")
     ax.scatter(rel["mean_predicted"], rel["observed_rate"],
@@ -73,7 +73,7 @@ def main(argv):
     ax.set_title(f"Reliability plot ({league})")
     ax.legend(); ax.set_xlim(0, 1); ax.set_ylim(0, 1)
     fig.tight_layout()
-    out = os.path.join(os.path.dirname(__file__), "..", "figures", f"calibration_{league}.png")
+    out = f"calibration_{league}.png"
     fig.savefig(out, dpi=120)
     print(f"\nSaved reliability plot to {os.path.relpath(out)}")
 

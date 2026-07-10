@@ -15,10 +15,10 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from dcmodel.model import DixonColesModel
-from dcmodel.simulate import make_team_params, simulate_season
+from model import DixonColesModel
+from simulate import make_team_params, simulate_season
 
 
 def _fit_on_simulated(n_seasons=4, seed=1):

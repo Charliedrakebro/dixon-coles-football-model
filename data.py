@@ -1,103 +1,79 @@
 """
-Generate synthetic seasons from known team parameters.
+Load match results and bookmaker odds from football-data.co.uk.
 
-This has two uses: it lets the test suite check that the fitter recovers the
-parameters it was given (the strongest evidence an implementation is correct),
-and it lets the demo scripts run with no network access. Matches are drawn
-from the same Dixon-Coles data-generating process the model assumes, and
-bookmaker-style odds are produced by adding a margin to the true probabilities.
+That site is the pragmatic source for this project because each CSV carries
+full-time goals and closing 1X2 odds together, which is exactly what the model
+and its market benchmark need. FBref has richer stats but no prices, and
+StatsBomb's open data has events but neither odds nor full league history.
+
+The loader standardises whatever is available into a common schema:
+    Date, HomeTeam, AwayTeam, FTHG, FTAG, OddsH, OddsD, OddsA
+preferring Pinnacle closing odds, then Bet365, then the market average.
 """
 
 from __future__ import annotations
 
-import numpy as np
+import io
+import urllib.request
+
 import pandas as pd
 
+BASE = "https://www.football-data.co.uk/mmz4281"
 
-def make_team_params(n_teams: int = 20, seed: int = 0):
-    """Draw a plausible set of attack/defence ratings, home advantage and rho."""
-    rng = np.random.default_rng(seed)
-    attack = rng.normal(0.0, 0.35, n_teams)
-    defence = rng.normal(0.0, 0.35, n_teams)
-    attack -= attack.mean()
-    defence -= defence.mean()
-    teams = [f"Team_{i:02d}" for i in range(n_teams)]
-    return {
-        "teams": teams,
-        "attack": attack,
-        "defence": defence,
-        "home_adv": 0.26,
-        "rho": -0.04,
-    }
+# preference order for the 1X2 odds triple
+ODDS_SETS = [
+    ("PSCH", "PSCD", "PSCA"),  # Pinnacle closing
+    ("PSH", "PSD", "PSA"),     # Pinnacle
+    ("B365H", "B365D", "B365A"),
+    ("AvgH", "AvgD", "AvgA"),  # market average
+    ("BbAvH", "BbAvD", "BbAvA"),
+]
 
 
-def _tau_scalar(x, y, lam, mu, rho):
-    if x == 0 and y == 0:
-        return 1.0 - lam * mu * rho
-    if x == 0 and y == 1:
-        return 1.0 + lam * rho
-    if x == 1 and y == 0:
-        return 1.0 + mu * rho
-    if x == 1 and y == 1:
-        return 1.0 - rho
-    return 1.0
+def _season_url(league: str, season: str) -> str:
+    # e.g. league 'E0' (Premier League), season '2324' -> .../2324/E0.csv
+    return f"{BASE}/{season}/{league}.csv"
 
 
-def _score_probs(lam, mu, rho, max_goals=12):
-    from scipy.stats import poisson
+def _standardise(raw: pd.DataFrame) -> pd.DataFrame:
+    cols = {"Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG"}
+    if not cols.issubset(raw.columns):
+        raise ValueError("CSV missing expected result columns.")
+    out = pd.DataFrame(
+        {
+            "Date": pd.to_datetime(raw["Date"], dayfirst=True, errors="coerce"),
+            "HomeTeam": raw["HomeTeam"].astype(str),
+            "AwayTeam": raw["AwayTeam"].astype(str),
+            "FTHG": pd.to_numeric(raw["FTHG"], errors="coerce"),
+            "FTAG": pd.to_numeric(raw["FTAG"], errors="coerce"),
+        }
+    )
+    for h, d, a in ODDS_SETS:
+        if {h, d, a}.issubset(raw.columns):
+            out["OddsH"] = pd.to_numeric(raw[h], errors="coerce")
+            out["OddsD"] = pd.to_numeric(raw[d], errors="coerce")
+            out["OddsA"] = pd.to_numeric(raw[a], errors="coerce")
+            break
+    return out.dropna(subset=["Date", "FTHG", "FTAG"]).reset_index(drop=True)
 
-    g = np.arange(max_goals + 1)
-    m = np.outer(poisson.pmf(g, lam), poisson.pmf(g, mu))
-    m[0, 0] *= 1.0 - lam * mu * rho
-    m[0, 1] *= 1.0 + lam * rho
-    m[1, 0] *= 1.0 + mu * rho
-    m[1, 1] *= 1.0 - rho
-    m = np.clip(m, 0, None)
-    return m / m.sum()
 
+def load_seasons(league: str = "E0", seasons=("2223", "2324", "2425")) -> pd.DataFrame:
+    """Download and concatenate one or more seasons for a league.
 
-def simulate_season(params: dict, seed: int = 0, margin: float = 0.05,
-                    start_date: str = "2023-08-01") -> pd.DataFrame:
-    """Simulate a double round-robin season and attach margined 1X2 odds.
-
-    Returns a frame with the same columns the real data loader produces:
-    Date, HomeTeam, AwayTeam, FTHG, FTAG, OddsH, OddsD, OddsA.
+    League codes follow football-data.co.uk (E0 Premier League, E1 Championship,
+    SP1 La Liga, I1 Serie A, D1 Bundesliga, F1 Ligue 1). Seasons are four-digit,
+    e.g. '2324' for 2023/24.
     """
-    rng = np.random.default_rng(seed)
-    teams = params["teams"]
-    n = len(teams)
-    idx = {t: k for k, t in enumerate(teams)}
-    rows = []
-    date = pd.Timestamp(start_date)
-    fixtures = [(h, a) for h in teams for a in teams if h != a]
-    rng.shuffle(fixtures)
+    frames = []
+    for season in seasons:
+        url = _season_url(league, season)
+        with urllib.request.urlopen(url, timeout=30) as resp:
+            raw = pd.read_csv(io.BytesIO(resp.read()), encoding="latin-1")
+        frames.append(_standardise(raw))
+    return pd.concat(frames, ignore_index=True).sort_values("Date").reset_index(drop=True)
 
-    for gw, (h, a) in enumerate(fixtures):
-        i, j = idx[h], idx[a]
-        lam = np.exp(params["home_adv"] + params["attack"][i] - params["defence"][j])
-        mu = np.exp(params["attack"][j] - params["defence"][i])
-        probs = _score_probs(lam, mu, params["rho"])
-        flat = probs.ravel()
-        draw = rng.choice(len(flat), p=flat)
-        hg, ag = divmod(draw, probs.shape[1])
 
-        home_p = np.tril(probs, -1).sum()
-        away_p = np.triu(probs, 1).sum()
-        draw_p = np.trace(probs)
-        true = np.array([home_p, draw_p, away_p])
-        # apply a multiplicative margin then convert to decimal odds
-        book = true * (1.0 + margin)
-        odds = 1.0 / book
-        rows.append(
-            {
-                "Date": date + pd.Timedelta(days=gw // (n // 2)),
-                "HomeTeam": h,
-                "AwayTeam": a,
-                "FTHG": int(hg),
-                "FTAG": int(ag),
-                "OddsH": round(float(odds[0]), 3),
-                "OddsD": round(float(odds[1]), 3),
-                "OddsA": round(float(odds[2]), 3),
-            }
-        )
-    return pd.DataFrame(rows).sort_values("Date").reset_index(drop=True)
+def load_csv(path: str) -> pd.DataFrame:
+    """Load a football-data.co.uk CSV already saved to disk."""
+    raw = pd.read_csv(path, encoding="latin-1")
+    return _standardise(raw)
